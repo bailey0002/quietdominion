@@ -2,7 +2,7 @@ import { useReducer, useCallback, useEffect, useRef } from 'react'
 import { GAME_CONFIG, RESOURCES, STRUCTURES } from '../data/gameData'
 
 // Initial game state
-const createInitialState = () => ({
+const createInitialState = (legacyData = null) => ({
   // Meta
   gameStarted: false,
   introComplete: false,
@@ -11,8 +11,11 @@ const createInitialState = () => ({
   lastSaved: null,
   lastOnline: Date.now(),
   
-  // Resources
-  resources: { ...GAME_CONFIG.INITIAL_RESOURCES },
+  // Resources (with legacy bonuses applied)
+  resources: applyLegacyBonuses(
+    { ...GAME_CONFIG.INITIAL_RESOURCES },
+    legacyData?.legacyUpgrades || {}
+  ),
   resourceCaps: { ...GAME_CONFIG.BASE_CAPS },
   productionRates: { ...GAME_CONFIG.BASE_RATES },
   
@@ -28,6 +31,7 @@ const createInitialState = () => ({
     maren: 50,
     tomas: 50,
     elara: 0,
+    corvus: 0,
   },
   
   // Events
@@ -40,16 +44,32 @@ const createInitialState = () => ({
   activeExpedition: null,
   
   // Lore
-  discoveredLore: [],
+  discoveredLore: legacyData?.startingLore || [],
+  newLore: [],
   
   // Progression
-  prestigeCount: 0,
-  legacyBonuses: {},
+  prestigeCount: legacyData?.prestigeCount || 0,
+  legacyPoints: legacyData?.legacyPoints || 0,
+  legacyUpgrades: legacyData?.legacyUpgrades || {},
   chosenPath: null,
   
   // UI State
   notifications: [],
 })
+
+// Apply legacy bonuses to starting resources
+const applyLegacyBonuses = (resources, upgrades) => {
+  const quickStartLevel = upgrades.quickStart || 0
+  if (quickStartLevel > 0) {
+    const bonus = 1 + (0.2 * quickStartLevel)
+    Object.keys(resources).forEach(key => {
+      if (resources[key] > 0) {
+        resources[key] = Math.floor(resources[key] * bonus)
+      }
+    })
+  }
+  return resources
+}
 
 // Action types
 const ACTIONS = {
@@ -64,12 +84,18 @@ const ACTIONS = {
   RESOLVE_EVENT: 'RESOLVE_EVENT',
   START_EXPEDITION: 'START_EXPEDITION',
   COMPLETE_EXPEDITION: 'COMPLETE_EXPEDITION',
+  UPDATE_EXPEDITION: 'UPDATE_EXPEDITION',
   DISCOVER_LORE: 'DISCOVER_LORE',
   ADD_NOTIFICATION: 'ADD_NOTIFICATION',
   DISMISS_NOTIFICATION: 'DISMISS_NOTIFICATION',
   CALCULATE_OFFLINE: 'CALCULATE_OFFLINE',
   LOAD_SAVE: 'LOAD_SAVE',
   ADVANCE_DAY: 'ADVANCE_DAY',
+  UPDATE_ADVISOR_RELATION: 'UPDATE_ADVISOR_RELATION',
+  UNLOCK_ADVISOR: 'UNLOCK_ADVISOR',
+  PRESTIGE: 'PRESTIGE',
+  PURCHASE_LEGACY_UPGRADE: 'PURCHASE_LEGACY_UPGRADE',
+  SET_PATH: 'SET_PATH',
 }
 
 // Calculate production rates based on structures
@@ -343,6 +369,160 @@ function gameReducer(state, action) {
         day: state.day + 1,
       }
     
+    case ACTIONS.START_EXPEDITION: {
+      const { territoryId, cost } = action
+      
+      // Deduct costs
+      const newResources = { ...state.resources }
+      for (const [resource, amount] of Object.entries(cost)) {
+        newResources[resource] = (newResources[resource] || 0) - amount
+        if (newResources[resource] < 0) return state // Can't afford
+      }
+      
+      return {
+        ...state,
+        resources: newResources,
+        activeExpedition: {
+          territoryId,
+          startDay: state.day,
+        },
+      }
+    }
+    
+    case ACTIONS.COMPLETE_EXPEDITION: {
+      const { territoryId, rewards, loreFragment } = action
+      const newResources = { ...state.resources }
+      const newCaps = { ...state.resourceCaps }
+      const newRates = { ...state.productionRates }
+      
+      // Apply rewards
+      if (rewards) {
+        Object.entries(rewards).forEach(([key, value]) => {
+          if (key === 'capBonus') {
+            Object.entries(value).forEach(([res, bonus]) => {
+              newCaps[res] = (newCaps[res] || 0) + bonus
+            })
+          } else if (key === 'productionBonus') {
+            Object.entries(value).forEach(([res, bonus]) => {
+              newRates[res] = (newRates[res] || 0) + bonus
+            })
+          } else if (key !== 'unlocks') {
+            newResources[key] = Math.min(
+              (newResources[key] || 0) + value,
+              newCaps[key] || Infinity
+            )
+          }
+        })
+      }
+      
+      // Discover lore if any
+      const newLore = loreFragment && !state.discoveredLore.includes(loreFragment)
+        ? [...state.discoveredLore, loreFragment]
+        : state.discoveredLore
+      
+      const newNewLore = loreFragment && !state.discoveredLore.includes(loreFragment)
+        ? [...(state.newLore || []), loreFragment]
+        : state.newLore
+      
+      return {
+        ...state,
+        resources: newResources,
+        resourceCaps: newCaps,
+        productionRates: newRates,
+        activeExpedition: null,
+        discoveredTerritories: [...state.discoveredTerritories, territoryId],
+        discoveredLore: newLore,
+        newLore: newNewLore,
+      }
+    }
+    
+    case ACTIONS.DISCOVER_LORE: {
+      const { loreId } = action
+      if (state.discoveredLore.includes(loreId)) return state
+      
+      return {
+        ...state,
+        discoveredLore: [...state.discoveredLore, loreId],
+        newLore: [...(state.newLore || []), loreId],
+      }
+    }
+    
+    case ACTIONS.UPDATE_ADVISOR_RELATION: {
+      const { advisorId, change } = action
+      const currentRelation = state.advisorRelations[advisorId] || 50
+      const newRelation = Math.max(0, Math.min(100, currentRelation + change))
+      
+      return {
+        ...state,
+        advisorRelations: {
+          ...state.advisorRelations,
+          [advisorId]: newRelation,
+        },
+      }
+    }
+    
+    case ACTIONS.UNLOCK_ADVISOR: {
+      const { advisorId } = action
+      if (state.unlockedAdvisors.includes(advisorId)) return state
+      
+      return {
+        ...state,
+        unlockedAdvisors: [...state.unlockedAdvisors, advisorId],
+        advisorRelations: {
+          ...state.advisorRelations,
+          [advisorId]: 50,
+        },
+      }
+    }
+    
+    case ACTIONS.SET_PATH:
+      return {
+        ...state,
+        chosenPath: action.path,
+      }
+    
+    case ACTIONS.PRESTIGE: {
+      const { legacyPoints, ending } = action
+      
+      // Preserve legacy data
+      const newLegacyPoints = (state.legacyPoints || 0) + legacyPoints
+      const newPrestigeCount = state.prestigeCount + 1
+      
+      // Calculate starting lore from legacy upgrades
+      const ancientKnowledgeLevel = state.legacyUpgrades?.ancientKnowledge || 0
+      const startingLore = state.discoveredLore.slice(0, ancientKnowledgeLevel)
+      
+      return {
+        ...createInitialState({
+          prestigeCount: newPrestigeCount,
+          legacyPoints: newLegacyPoints,
+          legacyUpgrades: state.legacyUpgrades || {},
+          startingLore,
+        }),
+        prestigeCount: newPrestigeCount,
+        legacyPoints: newLegacyPoints,
+        legacyUpgrades: state.legacyUpgrades || {},
+        discoveredLore: startingLore,
+      }
+    }
+    
+    case ACTIONS.PURCHASE_LEGACY_UPGRADE: {
+      const { upgradeId, cost } = action
+      
+      if ((state.legacyPoints || 0) < cost) return state
+      
+      const currentLevel = state.legacyUpgrades?.[upgradeId] || 0
+      
+      return {
+        ...state,
+        legacyPoints: (state.legacyPoints || 0) - cost,
+        legacyUpgrades: {
+          ...state.legacyUpgrades,
+          [upgradeId]: currentLevel + 1,
+        },
+      }
+    }
+    
     default:
       return state
   }
@@ -442,6 +622,78 @@ export function useGameState() {
     return false
   }, [])
   
+  // Start expedition
+  const startExpedition = useCallback((territoryId, cost) => {
+    dispatch({ type: ACTIONS.START_EXPEDITION, territoryId, cost })
+    dispatch({
+      type: ACTIONS.ADD_NOTIFICATION,
+      notification: {
+        type: 'info',
+        message: 'Expedition dispatched. They will return with news.',
+        duration: 3000,
+      },
+    })
+  }, [])
+  
+  // Complete expedition
+  const completeExpedition = useCallback((territoryId, rewards, loreFragment) => {
+    dispatch({ type: ACTIONS.COMPLETE_EXPEDITION, territoryId, rewards, loreFragment })
+    dispatch({
+      type: ACTIONS.ADD_NOTIFICATION,
+      notification: {
+        type: 'success',
+        message: 'The expedition has returned!',
+        duration: 4000,
+      },
+    })
+  }, [])
+  
+  // Discover lore
+  const discoverLore = useCallback((loreId) => {
+    dispatch({ type: ACTIONS.DISCOVER_LORE, loreId })
+    dispatch({
+      type: ACTIONS.ADD_NOTIFICATION,
+      notification: {
+        type: 'info',
+        message: 'New lore discovered. Check the Codex.',
+        duration: 3000,
+      },
+    })
+  }, [])
+  
+  // Update advisor relationship
+  const updateAdvisorRelation = useCallback((advisorId, change) => {
+    dispatch({ type: ACTIONS.UPDATE_ADVISOR_RELATION, advisorId, change })
+  }, [])
+  
+  // Unlock advisor
+  const unlockAdvisor = useCallback((advisorId) => {
+    dispatch({ type: ACTIONS.UNLOCK_ADVISOR, advisorId })
+    dispatch({
+      type: ACTIONS.ADD_NOTIFICATION,
+      notification: {
+        type: 'success',
+        message: 'A new advisor has joined your council.',
+        duration: 4000,
+      },
+    })
+  }, [])
+  
+  // Set chosen path
+  const setPath = useCallback((path) => {
+    dispatch({ type: ACTIONS.SET_PATH, path })
+  }, [])
+  
+  // Prestige
+  const prestige = useCallback((data) => {
+    dispatch({ type: ACTIONS.PRESTIGE, ...data })
+  }, [])
+  
+  // Purchase legacy upgrade
+  const purchaseLegacyUpgrade = useCallback((upgradeId, cost) => {
+    dispatch({ type: ACTIONS.PURCHASE_LEGACY_UPGRADE, upgradeId, cost })
+  }, [])
+  
   // Game tick
   useEffect(() => {
     if (state.gameStarted && state.introComplete) {
@@ -478,6 +730,14 @@ export function useGameState() {
       canAffordStructure,
       saveGame,
       loadGame,
+      startExpedition,
+      completeExpedition,
+      discoverLore,
+      updateAdvisorRelation,
+      unlockAdvisor,
+      setPath,
+      prestige,
+      purchaseLegacyUpgrade,
     },
   }
 }
