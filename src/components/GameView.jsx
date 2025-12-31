@@ -9,7 +9,9 @@ import { LoreCodex } from './LoreCodex'
 import { EventModal } from './EventModal'
 import { NotificationStack } from './NotificationStack'
 import { PrestigeModal } from './PrestigeSystem'
+import { SettingsModal } from './SettingsModal'
 import { useExpeditionSystem } from '../hooks/useExpeditionSystem'
+import { PRESTIGE_CONFIG } from '../data/gameData'
 
 // Tab navigation for different game sections
 const TABS = {
@@ -18,14 +20,22 @@ const TABS = {
   CODEX: 'codex',
 }
 
-export function GameView({ gameState, actions }) {
+export function GameView({ gameState, actions, audio, onPrestige, onResetGame }) {
   const [activeTab, setActiveTab] = useState(TABS.SETTLEMENT)
   const [showPrestige, setShowPrestige] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   
   // Initialize expedition system
   const expeditionSystem = useExpeditionSystem(gameState, actions)
   
+  // Check if can prestige
+  const canPrestige = 
+    gameState.day >= PRESTIGE_CONFIG.requirements.day &&
+    gameState.resources.population >= PRESTIGE_CONFIG.requirements.population &&
+    Object.values(gameState.structures).reduce((a, b) => a + b, 0) >= PRESTIGE_CONFIG.requirements.totalStructures
+  
   const handleSave = () => {
+    audio?.playSound('click')
     actions.saveGame()
     actions.addNotification({
       type: 'success',
@@ -35,25 +45,40 @@ export function GameView({ gameState, actions }) {
   }
   
   const handleSettings = () => {
-    // Show prestige option if requirements might be met
-    if (gameState.day >= 30) {
-      setShowPrestige(true)
-    }
+    audio?.playSound('click')
+    setShowSettings(true)
   }
   
   const handlePrestige = (data) => {
-    actions.prestige(data)
+    audio?.playSound('prestige')
     setShowPrestige(false)
+    onPrestige(data)
   }
   
   const handleStartExpedition = (territoryId) => {
+    audio?.playSound('expedition')
     expeditionSystem.startExpedition(territoryId)
+  }
+  
+  const handleBuildStructure = (structureId) => {
+    audio?.playSound('build')
+    actions.buildStructure(structureId)
+  }
+  
+  const handleTabChange = (tab) => {
+    audio?.playSound('click')
+    setActiveTab(tab)
+  }
+  
+  const handleResolveEvent = (choiceIndex, choice) => {
+    audio?.playSound('event')
+    actions.resolveEvent(choiceIndex, choice)
   }
   
   // Tab button component
   const TabButton = ({ tab, label, hasNotification }) => (
     <button
-      onClick={() => setActiveTab(tab)}
+      onClick={() => handleTabChange(tab)}
       className={`
         relative px-4 py-2 font-display text-xs tracking-widest uppercase
         transition-all duration-300 rounded-t
@@ -134,7 +159,7 @@ export function GameView({ gameState, actions }) {
                     structures={gameState.structures}
                     structureUnlocks={gameState.structureUnlocks}
                     canAffordStructure={actions.canAffordStructure}
-                    onBuild={actions.buildStructure}
+                    onBuild={handleBuildStructure}
                   />
                 </section>
               </div>
@@ -186,7 +211,21 @@ export function GameView({ gameState, actions }) {
       {gameState.activeEvent && (
         <EventModal
           event={gameState.activeEvent}
-          onResolve={actions.resolveEvent}
+          onResolve={handleResolveEvent}
+        />
+      )}
+      
+      {/* Settings modal */}
+      {showSettings && (
+        <SettingsModal
+          onClose={() => setShowSettings(false)}
+          isMuted={audio?.isMuted}
+          ambientEnabled={audio?.ambientEnabled}
+          onToggleMute={audio?.toggleMute}
+          onToggleAmbient={audio?.toggleAmbient}
+          onOpenPrestige={() => setShowPrestige(true)}
+          canPrestige={canPrestige}
+          onResetGame={onResetGame}
         />
       )}
       

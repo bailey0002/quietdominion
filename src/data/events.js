@@ -180,6 +180,329 @@ export const EVENTS = {
       },
     ],
   },
+  
+  // Additional early game events
+  curious_child: {
+    id: 'curious_child',
+    title: 'A Child\'s Question',
+    description: 'A young one from the settlement approaches with wide eyes. "Why did we come here?"',
+    conditions: {
+      minDay: 7,
+      minPopulation: 10,
+    },
+    weight: 0.6,
+    choices: [
+      {
+        text: '"To build something new."',
+        effects: {},
+        outcome: 'The child nods solemnly, then runs off to play. Seeds are planted in unexpected ways.',
+      },
+      {
+        text: '"Because the old places couldn\'t hold us."',
+        effects: {},
+        outcome: 'A shadow crosses the child\'s face, then passes. They understand more than you expected.',
+      },
+      {
+        text: '"Ask me again when you\'re older."',
+        effects: {},
+        outcome: 'The child pouts but accepts. Some questions need time.',
+      },
+    ],
+  },
+  
+  night_sounds: {
+    id: 'night_sounds',
+    title: 'Sounds in the Night',
+    description: 'The watch reports strange noises from beyond the firelight. Movement in the darkness.',
+    conditions: {
+      minDay: 8,
+      minPopulation: 8,
+    },
+    weight: 0.5,
+    choices: [
+      {
+        text: 'Investigate immediately',
+        effects: { materials: -10 },
+        outcome: 'Deer. A whole herd, passing through. The torches spooked them, but one was caught. Fresh meat for the settlement.',
+        bonusEffects: { food: 30 },
+      },
+      {
+        text: 'Double the watch, wait for dawn',
+        effects: {},
+        outcome: 'Morning reveals nothing. Tracks suggest animals, not men. Still, the extra vigilance was wise.',
+      },
+      {
+        text: 'Ignore it—the fire will protect us',
+        effects: {},
+        outcome: 'The sounds fade. Whatever it was moved on. Perhaps you were lucky.',
+      },
+    ],
+  },
+  
+  old_bones: {
+    id: 'old_bones',
+    title: 'Bones in the Earth',
+    description: 'Workers digging foundations have unearthed something. Ancient remains, carefully arranged.',
+    conditions: {
+      minDay: 12,
+      minStructureCount: 3,
+    },
+    weight: 0.4,
+    choices: [
+      {
+        text: 'Study them carefully',
+        effects: { knowledge: 5 },
+        outcome: 'These bones are old—older than memory. Whoever they were, they were laid to rest with care.',
+        unlocks: { lore: 'first_settlers' },
+      },
+      {
+        text: 'Rebury them with respect',
+        effects: {},
+        outcome: 'The workers pause their labor for a quiet ceremony. The settlement feels a little more... rooted.',
+      },
+      {
+        text: 'Clear them away and continue building',
+        effects: { materials: 10 },
+        outcome: 'Work proceeds. The bones are scattered. If there were ghosts here, they are quiet ones.',
+      },
+    ],
+  },
+  
+  spring_rains: {
+    id: 'spring_rains',
+    title: 'The Spring Rains',
+    description: 'Heavy rains have swelled the stream. The fields drink deep, but so do the foundations.',
+    conditions: {
+      minDay: 15,
+      requiredStructures: ['farm'],
+    },
+    weight: 0.6,
+    choices: [
+      {
+        text: 'Dig drainage channels',
+        effects: { materials: -20 },
+        outcome: 'Hard work, but the water flows where you direct it. The structures hold.',
+      },
+      {
+        text: 'Let nature take its course',
+        effects: {},
+        outcome: 'Some flooding, but manageable. The crops will be exceptional this season.',
+        bonusEffects: { food: 40 },
+      },
+    ],
+  },
+  
+  talented_stranger: {
+    id: 'talented_stranger',
+    title: 'The Skilled Stranger',
+    description: 'A weathered traveler arrives bearing tools you\'ve never seen. "I can teach," they say, "for a price."',
+    conditions: {
+      minDay: 18,
+      minPopulation: 20,
+    },
+    weight: 0.5,
+    choices: [
+      {
+        text: 'Pay their price (50 food, 30 materials)',
+        effects: { food: -50, materials: -30, knowledge: 15 },
+        outcome: 'Three days of instruction. Your craftspeople learn techniques that would have taken years to discover.',
+      },
+      {
+        text: 'Offer a permanent home instead',
+        effects: { population: 1 },
+        outcome: 'They accept. "I\'ve been walking too long," they admit. Their knowledge becomes yours.',
+      },
+      {
+        text: 'Decline politely',
+        effects: {},
+        outcome: 'The stranger shrugs and moves on. What wisdom walks away with them?',
+      },
+    ],
+  },
+  
+  rival_settlement: {
+    id: 'rival_settlement',
+    title: 'Smoke on the Horizon',
+    description: 'Scout reports confirm it: another settlement rises to the east. Not close, but not far.',
+    conditions: {
+      minDay: 25,
+      minPopulation: 35,
+    },
+    weight: 0.4,
+    choices: [
+      {
+        text: 'Send an envoy with gifts',
+        effects: { food: -30, materials: -20, influence: 20 },
+        outcome: 'Weeks pass. The envoy returns with news: they are peaceful, for now. Trade may be possible.',
+      },
+      {
+        text: 'Observe them from a distance',
+        effects: {},
+        outcome: 'Careful watching reveals farmers, not warriors. They struggle as you once did. Competition or cooperation—the choice will come.',
+      },
+      {
+        text: 'Strengthen our own defenses',
+        effects: { materials: -40 },
+        outcome: 'Walls rise higher. Watches double. If they come with ill intent, you will be ready.',
+      },
+    ],
+  },
+  
+  wandering_scholar: {
+    id: 'wandering_scholar',
+    title: 'The Scholar\'s Question',
+    description: 'An elderly traveler asks to see your library—if you have one. Their eyes hold centuries of questions.',
+    conditions: {
+      minDay: 35,
+      requiredStructures: ['library'],
+    },
+    weight: 0.3,
+    advisor: 'elara',
+    choices: [
+      {
+        text: 'Grant them full access',
+        effects: { knowledge: 25 },
+        outcome: 'They spend three days among your texts, emerging with notes that fill volumes. "You have pieces," they say, "of something larger."',
+      },
+      {
+        text: 'Ask what they seek',
+        effects: { knowledge: 10 },
+        outcome: '"The old departure. Everyone left, once. I want to know why." They leave before you can answer.',
+        unlocks: { lore: 'the_question' },
+      },
+    ],
+  },
+  
+  festival_proposal: {
+    id: 'festival_proposal',
+    title: 'A Festival Proposed',
+    description: 'The people request a celebration. They\'ve worked hard; morale could use a boost.',
+    conditions: {
+      minDay: 20,
+      minPopulation: 25,
+      minFood: 100,
+    },
+    weight: 0.5,
+    choices: [
+      {
+        text: 'Approve a grand festival',
+        effects: { food: -60, population: 2, influence: 10 },
+        outcome: 'Three days of music, food, and joy. Wanderers are drawn by the sounds. Your people remember why they stay.',
+      },
+      {
+        text: 'Allow a modest celebration',
+        effects: { food: -25 },
+        outcome: 'A single evening of warmth and song. Enough to lift spirits without straining stores.',
+      },
+      {
+        text: 'Now is not the time',
+        effects: {},
+        outcome: 'The people accept your decision, though some grumble. Work continues as before.',
+      },
+    ],
+  },
+  
+  mysterious_light: {
+    id: 'mysterious_light',
+    title: 'Light on the Ridge',
+    description: 'For three nights now, a strange light has flickered atop the eastern ridge. No one knows its source.',
+    conditions: {
+      minDay: 30,
+      minPopulation: 30,
+    },
+    weight: 0.3,
+    choices: [
+      {
+        text: 'Send scouts to investigate',
+        effects: { food: -15 },
+        outcome: 'They return with tales of an ancient signal fire, still burning after untold years. The flame consumes nothing, yet does not die.',
+        unlocks: { lore: 'eternal_flame' },
+      },
+      {
+        text: 'Leave it be—some mysteries should rest',
+        effects: {},
+        outcome: 'The light continues for a week, then fades. Whatever message it carried, it was not for you.',
+      },
+    ],
+  },
+  
+  sick_season: {
+    id: 'sick_season',
+    title: 'The Coughing Sickness',
+    description: 'A fever spreads through the settlement. Not deadly, but weakening. Production slows.',
+    conditions: {
+      minDay: 22,
+      minPopulation: 30,
+    },
+    weight: 0.4,
+    choices: [
+      {
+        text: 'Rest and isolation',
+        effects: { food: -30 },
+        outcome: 'A week of reduced work, but the sick recover. No lives lost.',
+      },
+      {
+        text: 'Seek herbal remedies in the forest',
+        effects: { materials: -10 },
+        outcome: 'Old knowledge proves true. The fever breaks faster than expected.',
+      },
+      {
+        text: 'Push through—we can\'t afford to stop',
+        effects: { population: -1 },
+        outcome: 'Most recover, but one does not. The price of haste.',
+      },
+    ],
+  },
+  
+  wandering_family: {
+    id: 'wandering_family',
+    title: 'A Family in Need',
+    description: 'A family of five arrives, gaunt and weary. They ask only for a place to rest.',
+    conditions: {
+      minDay: 15,
+      minPopulation: 15,
+    },
+    weight: 0.6,
+    choices: [
+      {
+        text: 'Welcome them fully',
+        effects: { population: 5, food: -40 },
+        outcome: 'Five more hands to work. Five more mouths to feed. Five more stories around the fire.',
+      },
+      {
+        text: 'Offer food but not shelter',
+        effects: { food: -20 },
+        outcome: 'They eat, rest a night, and move on. Gratitude in their eyes, but disappointment too.',
+      },
+      {
+        text: 'We have nothing to spare',
+        effects: {},
+        outcome: 'They leave without a word. The children look back once.',
+      },
+    ],
+  },
+}
+
+// Additional lore that can be discovered
+const ADDITIONAL_LORE = {
+  first_settlers: {
+    id: 'first_settlers',
+    title: 'The First Settlers',
+    content: 'The bones belonged to people not unlike yourselves: farmers, builders, dreamers. They lived here once. They built here once. And then, like all the others, they walked away.',
+    discovered: false,
+  },
+  eternal_flame: {
+    id: 'eternal_flame',
+    title: 'The Undying Fire',
+    content: 'The ridge-fire burns without fuel, a beacon left by those who came before. Was it a warning? A promise? The flame answers no questions.',
+    discovered: false,
+  },
+  the_question: {
+    id: 'the_question',
+    title: 'The Scholar\'s Obsession',
+    content: 'The wandering scholar seeks an answer that eludes all: why did entire civilizations simply leave? Not in conquest, not in disaster—but in choice. What did they know that we do not?',
+    discovered: false,
+  },
 }
 
 // Dilemmas - larger decisions with significant consequences
