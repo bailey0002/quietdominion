@@ -44,18 +44,42 @@ export function TitleScreen({ onNewGame, onContinue, hasSave }) {
       </div>
       
       {/* Footer info */}
-      <div className="absolute bottom-8 text-center">
-        <p className="font-body text-xs text-sepia/40">
+      <div className="absolute bottom-8 text-center animate-fade-in" style={{ animationDelay: '0.6s' }}>
+        <p className="font-body text-xs text-sepia/40 mb-3">
           An incremental strategy experience
         </p>
-        <p className="font-mono text-xs text-sepia/30 mt-1">
-          v0.1.0
+        
+        {/* Grey Stratum / Mandatum branding */}
+        <div className="flex items-center justify-center gap-2 mb-1">
+          <div className="w-6 h-px bg-sepia/20" />
+          <p className="font-display text-[10px] tracking-[0.2em] uppercase text-sepia/40">
+            Delivered by
+          </p>
+          <div className="w-6 h-px bg-sepia/20" />
+        </div>
+        
+        <a 
+          href="https://www.greystratum.com" 
+          target="_blank" 
+          rel="noopener noreferrer"
+          className="group inline-block"
+        >
+          <p className="font-display text-xs tracking-[0.15em] uppercase text-gold/60 group-hover:text-gold transition-colors duration-300">
+            Mandatum
+          </p>
+          <p className="font-display text-[10px] tracking-[0.25em] uppercase text-sepia/35 group-hover:text-sepia/50 transition-colors duration-300">
+            of Grey Stratum
+          </p>
+        </a>
+        
+        <p className="font-mono text-[10px] text-sepia/20 mt-3">
+          v0.2.0
         </p>
       </div>
       
       {/* Decorative bottom element */}
-      <div className="absolute bottom-32 left-1/2 -translate-x-1/2">
-        <div className="w-px h-24 bg-gradient-to-t from-transparent via-sepia/30 to-transparent" />
+      <div className="absolute bottom-44 left-1/2 -translate-x-1/2">
+        <div className="w-px h-20 bg-gradient-to-t from-transparent via-sepia/30 to-transparent" />
       </div>
     </div>
   )
