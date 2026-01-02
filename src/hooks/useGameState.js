@@ -1,5 +1,5 @@
 import { useReducer, useCallback, useEffect, useRef } from 'react'
-import { GAME_CONFIG, RESOURCES, STRUCTURES } from '../data/gameData'
+import { GAME_CONFIG, RESOURCES, STRUCTURES, DAILY_LOGIN_CONFIG, MICRO_GOALS, EVENT_LOG_TYPES, PRESTIGE_CONFIG } from '../data/gameData'
 
 // Initial game state
 const createInitialState = (legacyData = null) => ({
@@ -53,6 +53,19 @@ const createInitialState = (legacyData = null) => ({
   legacyUpgrades: legacyData?.legacyUpgrades || {},
   chosenPath: null,
   
+  // Daily Login System
+  lastLoginDate: null,
+  loginStreak: 0,
+  dailyRewardClaimed: false,
+  totalLogins: 0,
+  
+  // Micro-Goals System
+  completedGoals: [],
+  activeGoals: ['build_first_shelter', 'build_first_farm', 'reach_10_population', 'build_woodcutter'],
+  
+  // Event-Sourced State Log
+  eventLog: [],
+  
   // UI State
   notifications: [],
 })
@@ -96,6 +109,13 @@ const ACTIONS = {
   PRESTIGE: 'PRESTIGE',
   PURCHASE_LEGACY_UPGRADE: 'PURCHASE_LEGACY_UPGRADE',
   SET_PATH: 'SET_PATH',
+  // New actions
+  CLAIM_DAILY_REWARD: 'CLAIM_DAILY_REWARD',
+  CHECK_DAILY_LOGIN: 'CHECK_DAILY_LOGIN',
+  COMPLETE_GOAL: 'COMPLETE_GOAL',
+  UNLOCK_GOAL: 'UNLOCK_GOAL',
+  ADD_EVENT_LOG: 'ADD_EVENT_LOG',
+  APPLY_PENDING_CONSEQUENCE: 'APPLY_PENDING_CONSEQUENCE',
 }
 
 // Calculate production rates based on structures
@@ -172,6 +192,139 @@ const checkStructureUnlocks = (state) => {
   return unlocks
 }
 
+// Check if a micro-goal is completed
+const checkGoalCondition = (goal, state) => {
+  const condition = goal.condition
+  
+  if (condition.structures) {
+    for (const [structureId, count] of Object.entries(condition.structures)) {
+      if ((state.structures[structureId] || 0) < count) return false
+    }
+  }
+  
+  if (condition.population && state.resources.population < condition.population) {
+    return false
+  }
+  
+  if (condition.territoriesDiscovered && (state.discoveredTerritories?.length || 0) < condition.territoriesDiscovered) {
+    return false
+  }
+  
+  if (condition.loreDiscovered && (state.discoveredLore?.length || 0) < condition.loreDiscovered) {
+    return false
+  }
+  
+  if (condition.canPrestige) {
+    const canPrestige = 
+      state.day >= PRESTIGE_CONFIG.requirements.day &&
+      state.resources.population >= PRESTIGE_CONFIG.requirements.population &&
+      Object.values(state.structures).reduce((a, b) => a + b, 0) >= PRESTIGE_CONFIG.requirements.totalStructures
+    if (!canPrestige) return false
+  }
+  
+  return true
+}
+
+// Check if a goal should be unlocked
+const checkGoalUnlockCondition = (goal, state) => {
+  const condition = goal.unlockCondition
+  if (!condition) return true
+  
+  if (condition.completedGoals) {
+    for (const goalId of condition.completedGoals) {
+      if (!state.completedGoals.includes(goalId)) return false
+    }
+  }
+  
+  if (condition.structures) {
+    for (const [structureId, count] of Object.entries(condition.structures)) {
+      if ((state.structures[structureId] || 0) < count) return false
+    }
+  }
+  
+  if (condition.population && state.resources.population < condition.population) {
+    return false
+  }
+  
+  return true
+}
+
+// Process pending consequences
+const processPendingConsequences = (state) => {
+  const { pendingConsequences, day } = state
+  if (!pendingConsequences || pendingConsequences.length === 0) return { state, triggered: [] }
+  
+  const triggered = []
+  const remaining = []
+  let newResources = { ...state.resources }
+  const newEventLog = [...(state.eventLog || [])]
+  
+  for (const consequence of pendingConsequences) {
+    if (day >= consequence.triggerDay) {
+      // Apply the delayed effects
+      if (consequence.effects) {
+        Object.entries(consequence.effects).forEach(([resource, amount]) => {
+          newResources[resource] = Math.max(0, (newResources[resource] || 0) + amount)
+        })
+      }
+      triggered.push(consequence)
+      
+      // Log the event
+      newEventLog.push({
+        type: EVENT_LOG_TYPES.CONSEQUENCE_APPLIED,
+        timestamp: Date.now(),
+        day,
+        data: {
+          eventId: consequence.eventId,
+          choiceIndex: consequence.choiceIndex,
+          effects: consequence.effects,
+          outcome: consequence.outcome,
+        }
+      })
+    } else {
+      remaining.push(consequence)
+    }
+  }
+  
+  return {
+    state: {
+      ...state,
+      resources: newResources,
+      pendingConsequences: remaining,
+      eventLog: newEventLog,
+    },
+    triggered,
+  }
+}
+
+// Get today's date string for daily login comparison
+const getDateString = (date = new Date()) => {
+  return date.toISOString().split('T')[0]
+}
+
+// Calculate daily reward based on streak
+const calculateDailyReward = (streak) => {
+  const dayIndex = ((streak - 1) % 7)
+  const baseReward = { ...DAILY_LOGIN_CONFIG.rewards[dayIndex] }
+  
+  // Apply streak multiplier for weeks beyond first
+  const weeksComplete = Math.floor((streak - 1) / 7)
+  if (weeksComplete > 0) {
+    const multiplier = Math.min(
+      1 + (weeksComplete * DAILY_LOGIN_CONFIG.streakBonus),
+      DAILY_LOGIN_CONFIG.maxStreakMultiplier
+    )
+    
+    Object.keys(baseReward).forEach(key => {
+      if (typeof baseReward[key] === 'number' && key !== 'day') {
+        baseReward[key] = Math.floor(baseReward[key] * multiplier)
+      }
+    })
+  }
+  
+  return baseReward
+}
+
 // Game reducer
 function gameReducer(state, action) {
   switch (action.type) {
@@ -180,6 +333,15 @@ function gameReducer(state, action) {
         ...state,
         gameStarted: true,
         lastOnline: Date.now(),
+        eventLog: [
+          ...(state.eventLog || []),
+          {
+            type: EVENT_LOG_TYPES.GAME_STARTED,
+            timestamp: Date.now(),
+            day: state.day,
+            data: { prestigeCount: state.prestigeCount }
+          }
+        ],
       }
     
     case ACTIONS.COMPLETE_INTRO:
@@ -187,12 +349,22 @@ function gameReducer(state, action) {
         ...state,
         introComplete: true,
         structures: { campfire: 1 },
+        eventLog: [
+          ...(state.eventLog || []),
+          {
+            type: EVENT_LOG_TYPES.INTRO_COMPLETED,
+            timestamp: Date.now(),
+            day: state.day,
+            data: {}
+          }
+        ],
       }
     
     case ACTIONS.TICK: {
       // Don't tick if game hasn't started or intro isn't complete
       if (!state.gameStarted || !state.introComplete) return state
       
+      let newState = { ...state }
       const newResources = { ...state.resources }
       const rates = state.productionRates
       
@@ -210,13 +382,80 @@ function gameReducer(state, action) {
       const newTickCount = state.tickCount + 1
       const newDay = Math.floor(newTickCount / 60) + 1 // 60 ticks = 1 day
       
-      return {
-        ...state,
+      newState = {
+        ...newState,
         resources: newResources,
         tickCount: newTickCount,
         day: newDay,
         lastOnline: Date.now(),
       }
+      
+      // Process pending consequences when day changes
+      if (newDay !== state.day) {
+        const { state: processedState, triggered } = processPendingConsequences(newState)
+        newState = processedState
+        
+        // We'll handle notifications for triggered consequences in the component
+        if (triggered.length > 0) {
+          newState.triggeredConsequences = triggered
+        }
+      }
+      
+      // Check micro-goals completion
+      const newCompletedGoals = [...(newState.completedGoals || [])]
+      const newActiveGoals = [...(newState.activeGoals || [])]
+      let goalsChanged = false
+      
+      for (const goalId of newActiveGoals) {
+        const goal = MICRO_GOALS[goalId]
+        if (goal && !newCompletedGoals.includes(goalId) && checkGoalCondition(goal, newState)) {
+          newCompletedGoals.push(goalId)
+          goalsChanged = true
+          
+          // Apply goal rewards
+          if (goal.rewards) {
+            Object.entries(goal.rewards).forEach(([resource, amount]) => {
+              const cap = newState.resourceCaps[resource] || Infinity
+              newState.resources[resource] = Math.min(
+                (newState.resources[resource] || 0) + amount,
+                cap
+              )
+            })
+          }
+          
+          // Log goal completion
+          newState.eventLog = [
+            ...(newState.eventLog || []),
+            {
+              type: EVENT_LOG_TYPES.GOAL_COMPLETED,
+              timestamp: Date.now(),
+              day: newDay,
+              data: { goalId, rewards: goal.rewards }
+            }
+          ]
+          
+          // Mark for notification
+          newState.completedGoalNotification = goal
+        }
+      }
+      
+      // Check for newly unlockable goals
+      if (goalsChanged) {
+        Object.entries(MICRO_GOALS).forEach(([goalId, goal]) => {
+          if (!newActiveGoals.includes(goalId) && 
+              !newCompletedGoals.includes(goalId) && 
+              checkGoalUnlockCondition(goal, { ...newState, completedGoals: newCompletedGoals })) {
+            newActiveGoals.push(goalId)
+          }
+        })
+      }
+      
+      if (goalsChanged) {
+        newState.completedGoals = newCompletedGoals
+        newState.activeGoals = newActiveGoals.filter(g => !newCompletedGoals.includes(g))
+      }
+      
+      return newState
     }
     
     case ACTIONS.ADD_RESOURCE:
@@ -277,6 +516,15 @@ function gameReducer(state, action) {
         productionRates: newRates,
         resourceCaps: newCaps,
         structureUnlocks: newUnlocks,
+        eventLog: [
+          ...(state.eventLog || []),
+          {
+            type: EVENT_LOG_TYPES.STRUCTURE_BUILT,
+            timestamp: Date.now(),
+            day: state.day,
+            data: { structureId: action.structureId, count: currentCount + 1 }
+          }
+        ],
       }
     }
     
@@ -289,18 +537,39 @@ function gameReducer(state, action) {
     case ACTIONS.RESOLVE_EVENT: {
       const { choice, effects } = action
       const newResources = { ...state.resources }
+      const newPendingConsequences = [...(state.pendingConsequences || [])]
       
-      // Apply effects
+      // Apply immediate effects
       if (effects) {
         Object.entries(effects).forEach(([resource, amount]) => {
           newResources[resource] = Math.max(0, (newResources[resource] || 0) + amount)
         })
       }
       
+      // Queue delayed effects if any
+      if (choice.delayed_effects && state.activeEvent?.consequence_delay) {
+        newPendingConsequences.push({
+          eventId: state.activeEvent.id,
+          choiceIndex: action.choiceIndex,
+          effects: choice.delayed_effects,
+          outcome: choice.delayed_outcome,
+          triggerDay: state.day + state.activeEvent.consequence_delay,
+          queuedDay: state.day,
+        })
+      }
+      
+      // Handle path setting
+      let newPath = state.chosenPath
+      if (choice.sets_path) {
+        newPath = choice.sets_path
+      }
+      
       return {
         ...state,
         resources: newResources,
         activeEvent: null,
+        chosenPath: newPath,
+        pendingConsequences: newPendingConsequences,
         eventHistory: [
           ...state.eventHistory,
           {
@@ -308,6 +577,20 @@ function gameReducer(state, action) {
             choiceIndex: action.choiceIndex,
             day: state.day,
           },
+        ],
+        eventLog: [
+          ...(state.eventLog || []),
+          {
+            type: EVENT_LOG_TYPES.EVENT_RESOLVED,
+            timestamp: Date.now(),
+            day: state.day,
+            data: {
+              eventId: state.activeEvent?.id,
+              choiceIndex: action.choiceIndex,
+              effects,
+              hasDelayedEffects: !!choice.delayed_effects,
+            }
+          }
         ],
       }
     }
@@ -433,6 +716,15 @@ function gameReducer(state, action) {
         discoveredTerritories: [...state.discoveredTerritories, territoryId],
         discoveredLore: newLore,
         newLore: newNewLore,
+        eventLog: [
+          ...(state.eventLog || []),
+          {
+            type: EVENT_LOG_TYPES.TERRITORY_DISCOVERED,
+            timestamp: Date.now(),
+            day: state.day,
+            data: { territoryId, rewards, loreFragment }
+          }
+        ],
       }
     }
     
@@ -444,6 +736,15 @@ function gameReducer(state, action) {
         ...state,
         discoveredLore: [...state.discoveredLore, loreId],
         newLore: [...(state.newLore || []), loreId],
+        eventLog: [
+          ...(state.eventLog || []),
+          {
+            type: EVENT_LOG_TYPES.LORE_DISCOVERED,
+            timestamp: Date.now(),
+            day: state.day,
+            data: { loreId }
+          }
+        ],
       }
     }
     
@@ -472,6 +773,15 @@ function gameReducer(state, action) {
           ...state.advisorRelations,
           [advisorId]: 50,
         },
+        eventLog: [
+          ...(state.eventLog || []),
+          {
+            type: EVENT_LOG_TYPES.ADVISOR_UNLOCKED,
+            timestamp: Date.now(),
+            day: state.day,
+            data: { advisorId }
+          }
+        ],
       }
     }
     
@@ -492,6 +802,21 @@ function gameReducer(state, action) {
       const ancientKnowledgeLevel = state.legacyUpgrades?.ancientKnowledge || 0
       const startingLore = state.discoveredLore.slice(0, ancientKnowledgeLevel)
       
+      // Log prestige event before resetting
+      const prestigeLog = {
+        type: EVENT_LOG_TYPES.PRESTIGE_TRIGGERED,
+        timestamp: Date.now(),
+        day: state.day,
+        data: {
+          ending,
+          legacyPoints,
+          totalLegacyPoints: newLegacyPoints,
+          prestigeCount: newPrestigeCount,
+          finalPopulation: state.resources.population,
+          finalDay: state.day,
+        }
+      }
+      
       return {
         ...createInitialState({
           prestigeCount: newPrestigeCount,
@@ -503,6 +828,11 @@ function gameReducer(state, action) {
         legacyPoints: newLegacyPoints,
         legacyUpgrades: state.legacyUpgrades || {},
         discoveredLore: startingLore,
+        // Preserve login streak across prestiges
+        lastLoginDate: state.lastLoginDate,
+        loginStreak: state.loginStreak,
+        totalLogins: state.totalLogins,
+        eventLog: [prestigeLog],
       }
     }
     
@@ -522,6 +852,80 @@ function gameReducer(state, action) {
         },
       }
     }
+    
+    case ACTIONS.CHECK_DAILY_LOGIN: {
+      const today = getDateString()
+      const lastLogin = state.lastLoginDate
+      
+      // If already logged in today, just return
+      if (lastLogin === today) {
+        return state
+      }
+      
+      // Calculate new streak
+      let newStreak = 1
+      if (lastLogin) {
+        const lastDate = new Date(lastLogin)
+        const todayDate = new Date(today)
+        const diffHours = (todayDate - lastDate) / (1000 * 60 * 60)
+        
+        // If within grace period, continue streak
+        if (diffHours <= DAILY_LOGIN_CONFIG.gracePeriodHours) {
+          newStreak = (state.loginStreak || 0) + 1
+        }
+      }
+      
+      return {
+        ...state,
+        lastLoginDate: today,
+        loginStreak: newStreak,
+        dailyRewardClaimed: false,
+        totalLogins: (state.totalLogins || 0) + 1,
+      }
+    }
+    
+    case ACTIONS.CLAIM_DAILY_REWARD: {
+      if (state.dailyRewardClaimed) return state
+      
+      const reward = calculateDailyReward(state.loginStreak || 1)
+      const newResources = { ...state.resources }
+      
+      // Apply rewards
+      Object.entries(reward).forEach(([key, value]) => {
+        if (typeof value === 'number' && key !== 'day' && RESOURCES[key]) {
+          const cap = state.resourceCaps[key] || Infinity
+          newResources[key] = Math.min((newResources[key] || 0) + value, cap)
+        }
+      })
+      
+      return {
+        ...state,
+        resources: newResources,
+        dailyRewardClaimed: true,
+        eventLog: [
+          ...(state.eventLog || []),
+          {
+            type: EVENT_LOG_TYPES.DAILY_REWARD_CLAIMED,
+            timestamp: Date.now(),
+            day: state.day,
+            data: { streak: state.loginStreak, reward }
+          }
+        ],
+      }
+    }
+    
+    case ACTIONS.ADD_EVENT_LOG:
+      return {
+        ...state,
+        eventLog: [
+          ...(state.eventLog || []),
+          {
+            ...action.logEntry,
+            timestamp: Date.now(),
+            day: state.day,
+          }
+        ],
+      }
     
     default:
       return state
@@ -613,6 +1017,7 @@ export function useGameState() {
         const parsed = JSON.parse(savedData)
         dispatch({ type: ACTIONS.LOAD_SAVE, savedState: parsed })
         dispatch({ type: ACTIONS.CALCULATE_OFFLINE })
+        dispatch({ type: ACTIONS.CHECK_DAILY_LOGIN })
         return true
       } catch (e) {
         console.error('Failed to load save:', e)
@@ -694,6 +1099,21 @@ export function useGameState() {
     dispatch({ type: ACTIONS.PURCHASE_LEGACY_UPGRADE, upgradeId, cost })
   }, [])
   
+  // Check daily login
+  const checkDailyLogin = useCallback(() => {
+    dispatch({ type: ACTIONS.CHECK_DAILY_LOGIN })
+  }, [])
+  
+  // Claim daily reward
+  const claimDailyReward = useCallback(() => {
+    dispatch({ type: ACTIONS.CLAIM_DAILY_REWARD })
+  }, [])
+  
+  // Add event log entry
+  const addEventLog = useCallback((logEntry) => {
+    dispatch({ type: ACTIONS.ADD_EVENT_LOG, logEntry })
+  }, [])
+  
   // Game tick
   useEffect(() => {
     if (state.gameStarted && state.introComplete) {
@@ -709,6 +1129,38 @@ export function useGameState() {
     }
   }, [state.gameStarted, state.introComplete])
   
+  // Handle triggered consequences notifications
+  useEffect(() => {
+    if (state.triggeredConsequences && state.triggeredConsequences.length > 0) {
+      state.triggeredConsequences.forEach(consequence => {
+        dispatch({
+          type: ACTIONS.ADD_NOTIFICATION,
+          notification: {
+            type: 'event',
+            message: consequence.outcome || 'Past decisions bear fruit...',
+            duration: 6000,
+          },
+        })
+      })
+      // Clear the triggered consequences flag
+      // This is a bit of a hack - ideally we'd handle this differently
+    }
+  }, [state.triggeredConsequences])
+  
+  // Handle goal completion notifications
+  useEffect(() => {
+    if (state.completedGoalNotification) {
+      dispatch({
+        type: ACTIONS.ADD_NOTIFICATION,
+        notification: {
+          type: 'success',
+          message: `Goal Complete: ${state.completedGoalNotification.title}`,
+          duration: 4000,
+        },
+      })
+    }
+  }, [state.completedGoalNotification])
+  
   // Auto-save every 30 seconds
   useEffect(() => {
     if (state.gameStarted) {
@@ -716,6 +1168,13 @@ export function useGameState() {
       return () => clearInterval(saveInterval)
     }
   }, [state.gameStarted, saveGame])
+  
+  // Check daily login on mount
+  useEffect(() => {
+    if (state.gameStarted) {
+      checkDailyLogin()
+    }
+  }, [state.gameStarted, checkDailyLogin])
   
   return {
     state,
@@ -738,6 +1197,9 @@ export function useGameState() {
       setPath,
       prestige,
       purchaseLegacyUpgrade,
+      checkDailyLogin,
+      claimDailyReward,
+      addEventLog,
     },
   }
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { GameHeader } from './GameHeader'
 import { NarrativeDisplay } from './NarrativeDisplay'
 import { ResourcePanel } from './ResourcePanel'
@@ -10,6 +10,8 @@ import { EventModal } from './EventModal'
 import { NotificationStack } from './NotificationStack'
 import { PrestigeModal } from './PrestigeSystem'
 import { SettingsModal } from './SettingsModal'
+import { DailyRewardModal } from './DailyRewardModal'
+import { MicroGoalsPanel } from './MicroGoalsPanel'
 import { useExpeditionSystem } from '../hooks/useExpeditionSystem'
 import { PRESTIGE_CONFIG } from '../data/gameData'
 
@@ -24,9 +26,21 @@ export function GameView({ gameState, actions, audio, onPrestige, onResetGame })
   const [activeTab, setActiveTab] = useState(TABS.SETTLEMENT)
   const [showPrestige, setShowPrestige] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showDailyReward, setShowDailyReward] = useState(false)
   
   // Initialize expedition system
   const expeditionSystem = useExpeditionSystem(gameState, actions)
+  
+  // Check for unclaimed daily reward on mount
+  useEffect(() => {
+    if (gameState.loginStreak > 0 && !gameState.dailyRewardClaimed) {
+      // Small delay for smooth UX
+      const timer = setTimeout(() => {
+        setShowDailyReward(true)
+      }, 500)
+      return () => clearTimeout(timer)
+    }
+  }, []) // Only run on mount
   
   // Check if can prestige
   const canPrestige = 
@@ -73,6 +87,11 @@ export function GameView({ gameState, actions, audio, onPrestige, onResetGame })
   const handleResolveEvent = (choiceIndex, choice) => {
     audio?.playSound('event')
     actions.resolveEvent(choiceIndex, choice)
+  }
+  
+  const handleClaimDailyReward = () => {
+    audio?.playSound('notification')
+    actions.claimDailyReward()
   }
   
   // Tab button component
@@ -139,6 +158,11 @@ export function GameView({ gameState, actions, audio, onPrestige, onResetGame })
                     caps={gameState.resourceCaps}
                     rates={gameState.productionRates}
                   />
+                </section>
+                
+                {/* Micro-Goals / Objectives */}
+                <section className="animate-fade-in" style={{ animationDelay: '0.25s' }}>
+                  <MicroGoalsPanel gameState={gameState} />
                 </section>
                 
                 {/* Advisors */}
@@ -235,6 +259,15 @@ export function GameView({ gameState, actions, audio, onPrestige, onResetGame })
           gameState={gameState}
           onPrestige={handlePrestige}
           onClose={() => setShowPrestige(false)}
+        />
+      )}
+      
+      {/* Daily Reward modal */}
+      {showDailyReward && (
+        <DailyRewardModal
+          streak={gameState.loginStreak}
+          onClaim={handleClaimDailyReward}
+          onClose={() => setShowDailyReward(false)}
         />
       )}
       

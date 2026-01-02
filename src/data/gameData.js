@@ -36,6 +36,160 @@ export const GAME_CONFIG = {
   },
 }
 
+// Daily Login Rewards Configuration (+30% D7 retention per research)
+export const DAILY_LOGIN_CONFIG = {
+  // Rewards scale with streak (day 1-7, then repeats)
+  rewards: [
+    { day: 1, food: 25, materials: 15, description: 'A modest offering' },
+    { day: 2, food: 35, materials: 20, description: 'The valley provides' },
+    { day: 3, food: 50, materials: 30, description: 'Bounty from the stores' },
+    { day: 4, food: 60, materials: 40, population: 1, description: 'A wanderer joins you' },
+    { day: 5, food: 75, materials: 50, description: 'Generous provisions' },
+    { day: 6, food: 90, materials: 60, population: 1, description: 'Word spreads of your dominion' },
+    { day: 7, food: 120, materials: 80, population: 2, influence: 5, description: 'A week of prosperity!' },
+  ],
+  // Streak multiplier (bonus after day 7)
+  streakBonus: 0.1, // +10% per week streak
+  maxStreakMultiplier: 2.0, // Cap at 2x rewards
+  // Grace period (hours) before streak resets
+  gracePeriodHours: 36,
+}
+
+// Micro-Goals System (+25% retention per research)
+export const MICRO_GOALS = {
+  // Early game goals (unlocked immediately)
+  build_first_shelter: {
+    id: 'build_first_shelter',
+    title: 'Seek Shelter',
+    description: 'Build your first Shelter to house more settlers.',
+    condition: { structures: { shelter: 1 } },
+    rewards: { food: 20, materials: 15 },
+    tier: 1,
+    order: 1,
+  },
+  build_first_farm: {
+    id: 'build_first_farm',
+    title: 'Till the Earth',
+    description: 'Build a Farm to produce food.',
+    condition: { structures: { farm: 1 } },
+    rewards: { materials: 25 },
+    tier: 1,
+    order: 2,
+  },
+  reach_10_population: {
+    id: 'reach_10_population',
+    title: 'A Growing Community',
+    description: 'Reach 10 population.',
+    condition: { population: 10 },
+    rewards: { food: 30, materials: 20 },
+    tier: 1,
+    order: 3,
+  },
+  build_woodcutter: {
+    id: 'build_woodcutter',
+    title: 'Harvest the Forest',
+    description: 'Build a Woodcutter\'s Lodge for materials.',
+    condition: { structures: { woodcutter: 1 } },
+    rewards: { food: 25 },
+    tier: 1,
+    order: 4,
+  },
+  
+  // Mid game goals
+  reach_20_population: {
+    id: 'reach_20_population',
+    title: 'The Settlement Grows',
+    description: 'Reach 20 population.',
+    condition: { population: 20 },
+    rewards: { food: 50, materials: 30 },
+    tier: 2,
+    order: 5,
+    unlockCondition: { completedGoals: ['reach_10_population'] },
+  },
+  build_storehouse: {
+    id: 'build_storehouse',
+    title: 'Against Lean Times',
+    description: 'Build a Storehouse to increase storage.',
+    condition: { structures: { storehouse: 1 } },
+    rewards: { food: 40, materials: 30 },
+    tier: 2,
+    order: 6,
+    unlockCondition: { structures: { farm: 2 } },
+  },
+  build_tavern: {
+    id: 'build_tavern',
+    title: 'A Gathering Place',
+    description: 'Build a Tavern to attract wanderers.',
+    condition: { structures: { tavern: 1 } },
+    rewards: { population: 2, influence: 5 },
+    tier: 2,
+    order: 7,
+    unlockCondition: { population: 15 },
+  },
+  build_smithy: {
+    id: 'build_smithy',
+    title: 'Forge Ahead',
+    description: 'Build a Smithy to improve construction.',
+    condition: { structures: { smithy: 1 } },
+    rewards: { materials: 50 },
+    tier: 2,
+    order: 8,
+    unlockCondition: { structures: { woodcutter: 1 } },
+  },
+  
+  // Late game goals
+  reach_50_population: {
+    id: 'reach_50_population',
+    title: 'A Thriving Community',
+    description: 'Reach 50 population.',
+    condition: { population: 50 },
+    rewards: { food: 100, materials: 75, influence: 10 },
+    tier: 3,
+    order: 9,
+    unlockCondition: { completedGoals: ['reach_20_population'] },
+  },
+  build_library: {
+    id: 'build_library',
+    title: 'Preserve Knowledge',
+    description: 'Build a Library to unlock research.',
+    condition: { structures: { library: 1 } },
+    rewards: { knowledge: 25, influence: 10 },
+    tier: 3,
+    order: 10,
+    unlockCondition: { population: 30 },
+  },
+  first_exploration: {
+    id: 'first_exploration',
+    title: 'Beyond the Valley',
+    description: 'Complete your first territory exploration.',
+    condition: { territoriesDiscovered: 1 },
+    rewards: { food: 75, materials: 50, influence: 15 },
+    tier: 3,
+    order: 11,
+  },
+  discover_lore: {
+    id: 'discover_lore',
+    title: 'Secrets of the Past',
+    description: 'Discover your first lore fragment.',
+    condition: { loreDiscovered: 1 },
+    rewards: { knowledge: 20, influence: 10 },
+    tier: 3,
+    order: 12,
+  },
+  
+  // Prestige goals
+  reach_prestige_requirements: {
+    id: 'reach_prestige_requirements',
+    title: 'Ready to Begin Anew',
+    description: 'Meet the requirements to prestige.',
+    condition: { canPrestige: true },
+    rewards: { influence: 25, legacy: 5 },
+    tier: 4,
+    order: 13,
+    unlockCondition: { completedGoals: ['reach_50_population'] },
+  },
+}
+
 // Resource definitions with metadata
 export const RESOURCES = {
   food: {
@@ -573,4 +727,20 @@ export const ENDINGS = {
     ],
     legacyBonus: 20,
   },
+}
+
+// Event Log Types for Event-Sourced State
+export const EVENT_LOG_TYPES = {
+  GAME_STARTED: 'GAME_STARTED',
+  INTRO_COMPLETED: 'INTRO_COMPLETED',
+  STRUCTURE_BUILT: 'STRUCTURE_BUILT',
+  RESOURCE_THRESHOLD_REACHED: 'RESOURCE_THRESHOLD_REACHED',
+  ADVISOR_UNLOCKED: 'ADVISOR_UNLOCKED',
+  TERRITORY_DISCOVERED: 'TERRITORY_DISCOVERED',
+  LORE_DISCOVERED: 'LORE_DISCOVERED',
+  EVENT_RESOLVED: 'EVENT_RESOLVED',
+  GOAL_COMPLETED: 'GOAL_COMPLETED',
+  DAILY_REWARD_CLAIMED: 'DAILY_REWARD_CLAIMED',
+  PRESTIGE_TRIGGERED: 'PRESTIGE_TRIGGERED',
+  CONSEQUENCE_APPLIED: 'CONSEQUENCE_APPLIED',
 }
